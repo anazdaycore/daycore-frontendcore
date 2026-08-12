@@ -3,6 +3,7 @@ import { setBuildHeader } from './http';
 import { markSetupDone } from './backend';
 import { buildHash } from './build';
 import { loadCatalog, preferredLocale, type Catalog, type Locale } from './i18n';
+import { SPEAKS } from './paths';
 import type { Handshake, Session } from './types';
 
 // Bringing a frontend up against a backend it has never met.
@@ -37,8 +38,17 @@ export interface BootProblem {
   message: string;
 }
 
-/** The oldest backend major any of these frontends knows how to talk to. */
-export const MIN_API = 1;
+/**
+ * What this package requires of a backend.
+ *
+ * ⚠️ Derived from SPEAKS, not written again. It used to be `MIN_API = 1` while
+ * paths.ts hard-coded `/api/v2` — so against a v1 backend the check read
+ * `1 < 1`, passed, and every single request 404'd. The comment below promises
+ * that a mismatch is REPORTED rather than worked around; that promise was false
+ * for the one case it existed to cover.
+ */
+export const MIN_API = SPEAKS.major;
+export const MIN_API_MINOR = SPEAKS.minor;
 
 /**
  * @param manifest  a function taking this build's hash and returning the body
@@ -56,8 +66,24 @@ export async function boot(manifest: (hash: string) => unknown): Promise<Boot> {
   // frontend could guess which calls still exist, and the guess would be wrong
   // in a way the user experiences as random breakage rather than as "these two
   // do not fit".
+  //
+  // ⚠️ Two checks, because the two numbers fail differently. A wrong MAJOR is
+  // total — every path carries the prefix, so nothing works. A minor that is too
+  // low is PARTIAL: most of the app works and the calls added since that minor
+  // 404 one screen at a time, which is the harder failure to diagnose and the
+  // one nothing used to catch.
   if (hs.apiVersion !== undefined && hs.apiVersion < MIN_API) {
     throw { kind: 'too-old', message: String(hs.apiVersion) } satisfies BootProblem;
+  }
+  if (
+    hs.apiVersion === MIN_API &&
+    hs.apiMinor !== undefined &&
+    hs.apiMinor < MIN_API_MINOR
+  ) {
+    throw {
+      kind: 'too-old',
+      message: `${hs.apiVersion}.${hs.apiMinor}`,
+    } satisfies BootProblem;
   }
 
   const session = await api.initSession();
