@@ -63,6 +63,10 @@ export interface Proposal {
   dur?: number | null;
   btype?: string;
   expiresAt?: string;
+  /** What silence means when it expires: silence_accepts | silence_rejects.
+   *  The TTL line on a card says which — ignoring a card is always safe, so
+   *  the reader has to know which default their silence signs. */
+  ttlPolicy?: 'silence_accepts' | 'silence_rejects';
   /**
    * The lines of a compound card.
    *
