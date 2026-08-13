@@ -417,9 +417,11 @@ export const clearMemory = () => del<{ ok: boolean; cleared: number }>('/api/mem
 /** ⚠️ `familyId` is which token space these were judged against — it lets a
  *  build tell "no themes yet" from "I am asking as the wrong family". */
 export const themes = () =>
-  get<{ themes: CustomTheme[]; builtin: { id: string; name: string; dark?: boolean }[]; familyId: string }>(
-    '/api/themes',
-  );
+  // ⚠️ builtin is a plain id list (domain.BuiltinThemes = []string{"sky",…}),
+  // not objects — an {id,name} mirror here compiles against a shape the wire
+  // never sends, and the dark/base question is answered by themeAttribute in
+  // each frontend, not by this payload.
+  get<{ themes: CustomTheme[]; builtin: string[]; familyId: string }>('/api/themes');
 export const deleteTheme = (id: string) => del<unknown>(`/api/themes/${encodeURIComponent(id)}`);
 /** ⚠️ Generates against THIS build's token space — the X-Frontend-Build header
  *  http.ts sets is what selects it. */
