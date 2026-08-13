@@ -45,6 +45,12 @@
 export const SPEAKS = { major: 2, minor: 2 } as const;
 
 const API_PREFIX = `/api/v${SPEAKS.major}`;
+
+/** The prefix this build sends to. Exported so boot() can compare it against
+ *  what the backend reports rather than re-deriving the same string. */
+export function apiPrefix(): string {
+  return API_PREFIX;
+}
 const UNVERSIONED = ['/api/version', '/api/healthz'];
 
 export function apiPath(path: string): string {

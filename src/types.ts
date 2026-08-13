@@ -246,6 +246,10 @@ export interface OperationLog {
 export interface Handshake {
   apiVersion?: number;
   apiMinor?: number;
+  /** Where the backend mounts its versioned surface, e.g. "/api/v2".
+   *  ⚠️ Optional: a backend older than this field simply does not send it, and
+   *  its absence must never be read as "no prefix". */
+  apiPrefix?: string;
   version?: string;
   assignedFamilyId: string;
   handshakeRecorded: boolean;

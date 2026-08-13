@@ -3,7 +3,7 @@ import { setBuildHeader } from './http';
 import { markSetupDone } from './backend';
 import { buildHash } from './build';
 import { loadCatalog, preferredLocale, type Catalog, type Locale } from './i18n';
-import { SPEAKS } from './paths';
+import { apiPrefix, SPEAKS } from './paths';
 import type { Handshake, Session } from './types';
 
 // Bringing a frontend up against a backend it has never met.
@@ -24,6 +24,22 @@ import type { Handshake, Session } from './types';
 export interface Boot {
   session: Session;
   handshake: Handshake;
+  /**
+   * The backend serves a NEWER contract than this build speaks.
+   *
+   * ⚠️ Not an error, and not silence either — the two obvious options, both
+   * wrong. Following the backend's prefix would send every request through a
+   * contract this build's types and endpoints have never been checked against;
+   * refusing to start would break every older frontend the moment a backend
+   * upgrades, which is the thing putting the version in the path exists to
+   * prevent.
+   *
+   * So: keep using our own prefix (the backend still serves it) and hand the
+   * fact to the app, which can say so somewhere calm. What must not happen is
+   * the third option — carrying on as if nothing were different, and slowly
+   * drifting out of step with nothing anywhere reporting it.
+   */
+  backendAhead: boolean;
   /** The reader's catalogue, built from what THIS deployment can render. */
   catalog: Catalog;
   /** Every locale the deployment offers — a setting screen lists them. */
@@ -86,6 +102,19 @@ export async function boot(manifest: (hash: string) => unknown): Promise<Boot> {
     } satisfies BootProblem;
   }
 
+  // ⚠️ The other direction, which used to be silent. A backend on a newer major
+  // still serves ours (that is the promise of a versioned path), so this keeps
+  // working — but "keeps working" and "is fine" are different claims, and the
+  // difference is what nothing was reporting.
+  //
+  // ⚠️ It compares the backend's OWN prefix when it sends one, rather than
+  // inferring from apiVersion. A deployment can mount the surface somewhere
+  // this build would not have guessed, and the guess failing is exactly the
+  // case worth catching.
+  const backendAhead =
+    (hs.apiVersion !== undefined && hs.apiVersion > MIN_API) ||
+    (hs.apiPrefix !== undefined && hs.apiPrefix !== apiPrefix());
+
   const session = await api.initSession();
   markSetupDone();
 
@@ -105,6 +134,7 @@ export async function boot(manifest: (hash: string) => unknown): Promise<Boot> {
     catalog,
     availableLocales: available,
     deferred: hs.deferredTokens ?? [],
+    backendAhead,
     buildHash: hash,
   };
 }
