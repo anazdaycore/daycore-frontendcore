@@ -24,6 +24,13 @@ export interface DayPlan {
   note?: string;
 }
 
+/** One line of a compound card, accepted or rejected on its own. */
+export interface ProposalRow {
+  id: string;
+  label: string;
+  state: 'pending' | 'accepted' | 'rejected' | 'expired';
+}
+
 export interface Proposal {
   id: string;
   state: 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -38,6 +45,18 @@ export interface Proposal {
   dur?: number | null;
   btype?: string;
   expiresAt?: string;
+  /**
+   * The lines of a compound card.
+   *
+   * ⚠️ Absent for a simple card, and the two are answered DIFFERENTLY — see
+   * respondToProposal / respondToProposalRow. Rendering a compound card with a
+   * plain accept/reject pair sends a `choice` that matches no row, which the
+   * server reads as an acceptance whose chosen row is none of them: the state
+   * flips, the ops attached to the rows do not run, and nothing reports it.
+   *
+   * Every card the daemon producers emit has rows.
+   */
+  rows?: ProposalRow[];
 }
 
 export interface Session {

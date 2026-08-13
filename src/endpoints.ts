@@ -79,14 +79,29 @@ export const proposals = () => get<{ proposals: Proposal[] }>('/api/proposals');
  * is deliberate on the server's side (silence must never accept anything), and
  * this wrapper exists so no caller here has to remember it.
  *
- * For a compound card, `choice` is the id of the row being taken and every other
- * row is rejected — so this signature does not cover those, and adding a row
- * picker later means a second function rather than an optional argument.
+ * ⚠️ SIMPLE cards only. A card with `rows` is answered by naming one of them —
+ * see respondToProposalRow. Sending "accept" for a compound card flips its state
+ * while matching no row, so the ops hanging off the rows never run: the reader
+ * presses yes and nothing happens, silently, with a 200.
  */
 export const respondToProposal = (id: string, accept: boolean) =>
   post<unknown>(`/api/proposals/${encodeURIComponent(id)}/respond`, {
     choice: accept ? 'accept' : 'reject',
   });
+
+/**
+ * Answer a compound card by taking one of its rows.
+ *
+ * ⚠️ A second function rather than an optional argument on the one above, which
+ * is what the note there prescribed before there was anything to answer: the two
+ * calls carry different meanings in the same field, and one signature that could
+ * express both is one a caller can get wrong by omission.
+ *
+ * Every other row is rejected by the server — a compound card is a menu, not a
+ * checklist.
+ */
+export const respondToProposalRow = (id: string, rowID: string) =>
+  post<unknown>(`/api/proposals/${encodeURIComponent(id)}/respond`, { choice: rowID });
 
 /** The field is `mood`, not `kind` — see internal/server/handlers_mood.go. */
 export const recordMood = (mood: string, note = '') =>
