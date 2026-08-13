@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildHash } from './build';
 import {
+  createMaterial,
   createWish,
   deleteWish,
   lockPlanBlock,
@@ -182,5 +183,17 @@ describe('streamCompanion', () => {
     await streamCompanion({ message: '陪我', timezone: 'Asia/Shanghai', threadId: 't1' }, {});
     expect(calls[0]!.url.endsWith('/api/v2/ai/companion')).toBe(true);
     expect(calls[0]!.body).toEqual({ message: '陪我', timezone: 'Asia/Shanghai', threadId: 't1' });
+  });
+});
+
+describe('createMaterial', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('posts title/body/category to /api/v2/materials', async () => {
+    const calls = stubJsonFetch({ id: 'm1' });
+    await createMaterial({ title: '物理错题', body: '第三章', category: 'note' });
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.url.endsWith('/api/v2/materials')).toBe(true);
+    expect(calls[0]!.body).toEqual({ title: '物理错题', body: '第三章', category: 'note' });
   });
 });

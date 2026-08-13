@@ -215,6 +215,12 @@ export const searchMaterials = (q: string, category = '') =>
     `/api/materials/search?q=${encodeURIComponent(q)}` +
       (category ? `&category=${encodeURIComponent(category)}` : ''),
   );
+/** Hand a piece of material to the library manually — the "资料收好" gravity
+ *  well and the materials panel's add form both write through this. Category
+ *  must be one of the registry's ids (empty means "note"; unknown → 400
+ *  bad_category) — read materialCategories() rather than guessing. */
+export const createMaterial = (m: { title: string; body?: string; summary?: string; category?: string; tags?: string[]; source?: string }) =>
+  post<Material>('/api/materials', m);
 export const deleteMaterial = (id: string) => del<unknown>(`/api/materials/${encodeURIComponent(id)}`);
 /** The registry plus this session's on/off flags. ⚠️ Not a constant in the
  *  frontend: an operator's categories would be invisible. */
