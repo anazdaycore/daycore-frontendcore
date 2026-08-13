@@ -19,5 +19,19 @@ export function buildHash(manifestJSON: string): string {
     h ^= manifestJSON.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return 'ting-' + h.toString(16).padStart(8, '0');
+  // The prefix is the family the manifest declares, so the console can tell
+  // four frontends' builds apart at a glance — it used to be a hardcoded
+  // 'ting-', which labelled every build of every frontend as 汀's. Cosmetic
+  // only: the hash above is what actually distinguishes one build from another.
+  let prefix = 'dc';
+  try {
+    const fam = (JSON.parse(manifestJSON) as { familyId?: unknown }).familyId;
+    if (typeof fam === 'string') {
+      const clean = fam.toLowerCase().replace(/[^a-z0-9-]+/g, '');
+      if (clean) prefix = clean;
+    }
+  } catch {
+    /* a manifest that does not parse still gets a hash, under 'dc' */
+  }
+  return prefix + '-' + h.toString(16).padStart(8, '0');
 }

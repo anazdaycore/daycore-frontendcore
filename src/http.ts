@@ -114,6 +114,46 @@ export const patch = <T,>(p: string, body: unknown) =>
 // endpoints below therefore type their DELETEs as `unknown`.
 export const del = <T,>(p: string) => request<T>(p, { method: 'DELETE' });
 
+/**
+ * A POST that returns the raw Response for streaming reads (SSE).
+ *
+ * Same credentials and build header as request(); differs in that the body is
+ * NOT consumed — the caller reads res.body itself. A non-2xx answer is still
+ * parsed and thrown as an ApiError here, so a stream that failed to start
+ * looks exactly like any other API failure.
+ */
+export async function postStream(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
+  const t = token();
+  if (t) headers.set('X-Session-Token', t);
+  if (buildHeader) headers.set('X-Frontend-Build', buildHeader);
+
+  let res: Response;
+  try {
+    res = await fetch(backendBase() + apiPath(path), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    throw new ApiError(0, 'unreachable', String(e), null);
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let parsed: { error?: string; message?: string } | null = null;
+    try {
+      parsed = text ? (JSON.parse(text) as { error?: string; message?: string }) : null;
+    } catch {
+      /* a non-JSON error body still throws, just without a stable code */
+    }
+    throw new ApiError(res.status, parsed?.error ?? 'error', parsed?.message ?? res.statusText, text);
+  }
+  return res;
+}
+
 /** Stash the session token — boot() calls this after /api/session/init. */
 export function rememberSession(t: string): void {
   setToken(t);

@@ -13,8 +13,26 @@ export interface TimeBlock {
   isAchievement?: boolean;
   origin?: 'auto' | 'manual' | 'rule';
   hidden?: boolean;
-  lockLevel?: string;
-  lockReason?: string;
+  /** ⚠️ Wire names are snake_case — lock_level, not lockLevel. The camelCase
+   *  mirror that used to live here matched NOTHING the backend sends, so every
+   *  hard-lock pin in every frontend was permanently dark. "" means "never
+   *  derived yet"; none means derived and free to move. */
+  lock_level?: '' | 'none' | 'soft' | 'hard';
+  lock_reason?: string;
+  lock_source?: '' | 'derived' | 'user' | 'agent';
+  /** How the time reads: floating=wall clock (no utc_time); fixed/local carry
+   *  an RFC3339 utc_time anchor. See api/FRONTEND_HANDOFF.md §C. */
+  time_mode?: 'floating' | 'fixed' | 'local';
+  timezone?: string;
+  utc_time?: string | null;
+  offset_min?: number | null;
+  offset_ref?: string;
+  rule_id?: string;
+  /** Retry chain, filled by the SERVER on an add that names rescheduled_from —
+   *  see internal/server/plan_guard.go. Past the cap the add is refused with
+   *  409 refish_capped. */
+  rescheduled_from?: string;
+  reschedule_count?: number;
   note?: string;
 }
 
@@ -256,9 +274,19 @@ export interface OperationLog {
   id: string;
   action: string;
   summary?: string;
-  reverted?: boolean;
-  revertedBy?: string;
+  /** schedule | habit | archive | care | system — the river colours its bands
+   *  by this, and rapport is scored per domain. */
+  domain?: string;
+  actor?: 'user' | 'agent' | 'system';
+  targetId?: string;
+  date?: string;
+  /** ok | failed */
+  status?: string;
   createdAt: string;
+  /* ⚠️ There is NO reverted flag on the wire — openapi's OperationLog never
+   * had one. A guard reading op.reverted compiles against a phantom and
+   * silently always passes; "was this undone" is answered by attempting the
+   * revert and reading already_reverted, not by a field. */
 }
 
 /** What POST /api/version answers. Fields the backend may omit are optional. */
@@ -284,3 +312,67 @@ export interface Handshake {
    *  An operator dropping a file into LOCALES_DIR extends it. */
   locales?: { available: string[]; defaultPrimary: string; defaultSecondary?: string };
 }
+
+export interface Wish {
+  id: string;
+  title: string;
+  note?: string;
+  effortMin?: number;
+  status: 'active' | 'done' | 'archived';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ── SSE v2 frames (POST /api/ai/companion) ───────────────────────────────────
+// The protocol of api/FRONTEND_HANDOFF.md §B. Every frame is one "data: {json}"
+// event; ": ping" heartbeats are comments and never reach these types.
+
+export interface DeltaFrame {
+  type: 'delta';
+  text: string;
+}
+export interface ReasoningFrame {
+  type: 'reasoning';
+  text: string;
+}
+export interface ToolStartFrame {
+  type: 'tool_start';
+  callId: string;
+  tool: string;
+  args?: Record<string, unknown>;
+}
+export interface ToolResultFrame {
+  type: 'tool_result';
+  callId: string;
+  tool: string;
+  ok: boolean;
+  summary?: string;
+  data?: unknown;
+  /** Store this for the undo affordance — POST /api/ops/{opId}/revert. */
+  opId?: string;
+  error?: string;
+}
+export interface DecisionCardFrame {
+  type: 'decision_card';
+  id: string;
+  title: string;
+  summary?: string;
+  options: { id: string; label: string }[];
+}
+export interface ErrorFrame {
+  type: 'error';
+  code?: string;
+  message?: string;
+}
+export interface DoneFrame {
+  type: 'done';
+}
+
+export type CompanionFrame =
+  | DeltaFrame
+  | ReasoningFrame
+  | ToolStartFrame
+  | ToolResultFrame
+  | DecisionCardFrame
+  | ErrorFrame
+  | DoneFrame;

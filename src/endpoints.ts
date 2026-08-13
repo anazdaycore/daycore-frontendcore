@@ -2,16 +2,18 @@
 // afternoon to learn — a wrapper whose only job is remembering that `choice: ""`
 // means REJECT earns its existence.
 
-import { del, get, patch, post, rememberSession } from './http';
+import { del, get, patch, post, postStream, rememberSession } from './http';
 import type {
   AIResult,
   Assignment,
   ChannelBinding,
   ChatMessage,
   ChatThread,
+  CompanionFrame,
   Course,
   CustomTheme,
   DayPlan,
+  DecisionCardFrame,
   Handshake,
   Material,
   MaterialCategory,
@@ -23,7 +25,10 @@ import type {
   ScheduleRule,
   Session,
   SessionPrefs,
+  ToolResultFrame,
+  ToolStartFrame,
   User,
+  Wish,
 } from './types';
 
 export async function initSession(): Promise<Session> {
@@ -67,6 +72,34 @@ export function todayIso(): string {
  */
 export const patchPlan = (date: string, action: unknown) =>
   patch<DayPlan>('/api/plan', { date, action });
+
+/**
+ * Pin a block's time by hand, or let it go — one of the three ways out of a
+ * 409 locked refusal (the others: take leave via patchPlan remove, or
+ * markConflict). level "none" unlocks. Answers the full updated DayPlan.
+ * 409 petrified means the block's lock is history too.
+ */
+export const lockPlanBlock = (date: string, blockId: string, level: 'none' | 'soft' | 'hard', reason?: string) =>
+  post<DayPlan>('/api/plan/lock', { date, blockId, level, ...(reason ? { reason } : {}) });
+
+/**
+ * 标记冲突 — the third way out of a lock refusal: the class really is
+ * colliding with something, so say so instead of moving or unlocking.
+ */
+export const markConflict = (date: string, blockId: string) =>
+  post<DayPlan>('/api/plan/conflict', { date, blockId });
+
+/**
+ * 重新安排 (refish): an add whose block names the original in
+ * rescheduled_from. The SERVER fills the chain root and count and refuses
+ * with 409 refish_capped past the cap — never send reschedule_count from the
+ * client; a counter the client controls is a cap that does not exist
+ * (internal/server/plan_guard.go).
+ */
+export const refishBlock = (
+  date: string,
+  block: { id?: string; title: string; type: string; time?: string | null; duration_min?: number | null; rescheduled_from: string },
+) => patchPlan(date, { action: 'add', block });
 
 export const proposals = () => get<{ proposals: Proposal[] }>('/api/proposals');
 
@@ -200,6 +233,18 @@ export const patchAssignment = (id: string, changes: { status?: string }) =>
   patch<Assignment>(`/api/assignments/${encodeURIComponent(id)}`, changes);
 export const courses = () => get<{ courses: Course[] }>('/api/courses');
 
+// ── wishes (许愿池) ─────────────────────────────────────────────────────────
+
+export const wishes = (status?: 'active' | 'done' | 'archived') =>
+  get<{ wishes: Wish[] }>('/api/wishes' + (status ? `?status=${status}` : ''));
+export const createWish = (w: { title: string; note?: string; effortMin?: number }) =>
+  post<Wish>('/api/wishes', w);
+export const updateWish = (
+  id: string,
+  changes: { title?: string; note?: string; effortMin?: number; status?: 'active' | 'done' | 'archived' },
+) => patch<unknown>(`/api/wishes/${encodeURIComponent(id)}`, changes);
+export const deleteWish = (id: string) => del<unknown>(`/api/wishes/${encodeURIComponent(id)}`);
+
 // ── the companion ───────────────────────────────────────────────────────────
 
 export const threads = () => get<{ threads: ChatThread[] }>('/api/chat/threads');
@@ -229,9 +274,113 @@ export const askCompanion = (threadId: string, message: string) =>
 export const chatMessage = (id: string) => get<ChatMessage>(`/api/chat/messages/${encodeURIComponent(id)}`);
 
 /** ⚠️ At most one decision card is pending per session, and a new message
- *  supersedes any outstanding one (internal/server/agent.go). */
-export const respondToDecision = (id: string, choice: string) =>
-  post<unknown>(`/api/decisions/${encodeURIComponent(id)}/respond`, { choice });
+ *  supersedes any outstanding one (internal/server/agent.go). The optional
+ *  text is the reader's own words when none of the options fit. */
+export const respondToDecision = (id: string, choice: string, text?: string) =>
+  post<unknown>(`/api/decisions/${encodeURIComponent(id)}/respond`, {
+    choice,
+    ...(text ? { text } : {}),
+  });
+
+// ── the companion, streaming ────────────────────────────────────────────────
+
+/** Callbacks for the frames a companion turn emits — api/FRONTEND_HANDOFF.md §B. */
+export interface CompanionStreamHandlers {
+  /** Append to the assistant bubble. */
+  onDelta?: (text: string) => void;
+  /** Optional thinking — render greyed/collapsed. */
+  onReasoning?: (text: string) => void;
+  /** A tool call started: show the working-on-it action card. */
+  onToolStart?: (f: ToolStartFrame) => void;
+  /** A tool call settled: update the card; f.opId is the undo handle. */
+  onToolResult?: (f: ToolResultFrame) => void;
+  /** A card the agent is BLOCKED on (≤45s): pop it, then respondToDecision. */
+  onDecisionCard?: (f: DecisionCardFrame) => void;
+  /** Stream-level error; a done frame still follows it. */
+  onError?: (code: string, message: string) => void;
+  /** The terminal frame arrived — the turn is over either way. */
+  onDone?: () => void;
+}
+
+/**
+ * Ask the companion and watch it work — the ONE SSE endpoint of the API.
+ *
+ * The agent loop runs server-side (≤6 rounds, 15 tools); this client only
+ * READS frames. Plan/rule/memory changes arrive as tool_start/tool_result —
+ * never as XML tags to parse, and never as something the frontend PATCHes
+ * itself. Undo is tool_result.opId → revertOp.
+ *
+ * Resolves when the stream ends (a done frame or the server closing the
+ * body — both terminate a turn); rejects with ApiError when the stream could
+ * not be started at all, and with the AbortError when signal fires.
+ */
+export async function streamCompanion(
+  body: {
+    message: string;
+    timezone: string;
+    assistantName?: string;
+    threadId?: string;
+    attachmentIds?: string[];
+    conversationHistory?: { role: 'user' | 'assistant'; content: string }[],
+  },
+  handlers: CompanionStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await postStream('/api/ai/companion', body, signal);
+  if (!res.body) {
+    handlers.onDone?.();
+    return;
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let cut: number;
+    // Frames are separated by a blank line ("data: {json}" + two newlines); a
+    // comment line (": ping") is a heartbeat and carries no frame.
+    while ((cut = buf.indexOf('\n\n')) >= 0) {
+      const rawEvent = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+      for (const line of rawEvent.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const json = line.slice(5).trim();
+        if (!json) continue;
+        let frame: CompanionFrame;
+        try {
+          frame = JSON.parse(json) as CompanionFrame;
+        } catch {
+          continue; // a malformed frame is skipped, never thrown into the stream
+        }
+        switch (frame.type) {
+          case 'delta':
+            handlers.onDelta?.(frame.text);
+            break;
+          case 'reasoning':
+            handlers.onReasoning?.(frame.text);
+            break;
+          case 'tool_start':
+            handlers.onToolStart?.(frame);
+            break;
+          case 'tool_result':
+            handlers.onToolResult?.(frame);
+            break;
+          case 'decision_card':
+            handlers.onDecisionCard?.(frame);
+            break;
+          case 'error':
+            handlers.onError?.(frame.code ?? 'error', frame.message ?? '');
+            break;
+          case 'done':
+            handlers.onDone?.();
+            break;
+        }
+      }
+    }
+  }
+}
 
 // ── mood ────────────────────────────────────────────────────────────────────
 
