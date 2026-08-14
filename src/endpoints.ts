@@ -22,6 +22,7 @@ import type {
   MoodKind,
   OperationLog,
   Proposal,
+  Rhythm,
   ScheduleRule,
   Session,
   SessionPrefs,
@@ -239,6 +240,28 @@ export const patchAssignment = (id: string, changes: { status?: string }) =>
   patch<Assignment>(`/api/assignments/${encodeURIComponent(id)}`, changes);
 export const courses = () => get<{ courses: Course[] }>('/api/courses');
 
+// ── imports (数据源) ────────────────────────────────────────────────────────
+
+/** The session's current import token ("" when none). The browser extension
+ *  pushes Canvas exports with it (X-Import-Token) because it has no cookie. */
+export const importToken = () => get<{ token: string }>('/api/import/token');
+/** Generate (or rotate) the import token; rotating invalidates the old one. */
+export const rotateImportToken = () => post<{ token: string }>('/api/import/token');
+/** Import an .ics export. preview=true returns candidates WITHOUT saving.
+ *  ⚠️ 409 timezone_mismatch when the file names a zone ≠ the session's and has
+ *  floating times — re-send with tzConfirmed (and timezone if the user chose). */
+export const importICS = (icsText: string, opts: { preview?: boolean; timezone?: string; tzConfirmed?: boolean } = {}) =>
+  post<unknown>('/api/import/ics', { icsText, ...opts });
+/** Ingest a Canvas export JSON — the extension's own format, or a file the user
+ *  uploaded. A web frontend POSTs this with its session; the extension pushes
+ *  the same body with X-Import-Token. */
+export const importCanvas = (p: {
+  version: string;
+  baseURL?: string;
+  courses: { canvasId: string; name: string; courseCode?: string; currentScore?: number | null; currentGrade?: string | null }[];
+  assignments: { canvasId: string; courseCanvasId?: string; title: string; dueAt?: string | null; pointsPossible?: number | null; submitted?: boolean; graded?: boolean; score?: number | null; htmlUrl?: string }[];
+}) => post<unknown>('/api/import/canvas', p);
+
 // ── wishes (许愿池) ─────────────────────────────────────────────────────────
 
 export const wishes = (status?: 'active' | 'done' | 'archived') =>
@@ -403,6 +426,12 @@ export const askMoodReply = (mood: string, note = '') =>
  *  patch, whatever the method says. */
 export const markExerciseDone = (id: string) => patch<{ ok: boolean }>('/api/mood', { id });
 
+// ── rhythm ──────────────────────────────────────────────────────────────────
+
+/** GET /api/rhythm — the session's rhythm. source: default (cold start) |
+ *  learned (median of observed days) | pinned (user-set by hand). */
+export const rhythm = () => get<Rhythm>('/api/rhythm');
+
 // ── settings ────────────────────────────────────────────────────────────────
 
 export const preferences = () => get<SessionPrefs>('/api/session/preferences');
@@ -429,10 +458,22 @@ export const themes = () =>
   // each frontend, not by this payload.
   get<{ themes: CustomTheme[]; builtin: string[]; familyId: string }>('/api/themes');
 export const deleteTheme = (id: string) => del<unknown>(`/api/themes/${encodeURIComponent(id)}`);
+/** ⚠️ Partial update — name / dark / variables. `base` is create-only (POST),
+ *  so it is not accepted here; the backend ignores it on PATCH. */
+export const patchTheme = (id: string, changes: { name?: string; dark?: boolean; variables?: Record<string, string> }) =>
+  patch<CustomTheme>(`/api/themes/${encodeURIComponent(id)}`, changes);
 /** ⚠️ Generates against THIS build's token space — the X-Frontend-Build header
- *  http.ts sets is what selects it. */
-export const generateTheme = (description: string) =>
-  post<AIResult & { variables?: Record<string, string> }>('/api/ai/theme', { description });
+ *  http.ts sets is what selects it.
+ *
+ *  The plain-string form starts from scratch; pass an object with `base`
+ *  (builtin id) or `themeId` (existing custom theme) to seed the generation
+ *  from those variables instead — the backend supports both. */
+export function generateTheme(description: string): Promise<AIResult & { variables?: Record<string, string> }>;
+export function generateTheme(body: { description: string; base?: string; themeId?: string }): Promise<AIResult & { variables?: Record<string, string> }>;
+export function generateTheme(arg: string | { description: string; base?: string; themeId?: string }) {
+  const body = typeof arg === 'string' ? { description: arg } : arg;
+  return post<AIResult & { variables?: Record<string, string> }>('/api/ai/theme', body);
+}
 export const saveTheme = (t: { name: string; base?: string; dark?: boolean; variables: Record<string, string> }) =>
   post<CustomTheme>('/api/themes', t);
 

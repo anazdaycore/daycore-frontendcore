@@ -138,3 +138,24 @@ export async function boot(manifest: (hash: string) => unknown): Promise<Boot> {
     buildHash: hash,
   };
 }
+
+/**
+ * The theme THIS family should wear on first paint.
+ *
+ * The session carries one flat currentTheme (the fallback family's) plus a
+ * preferences blob holding every family's own pick (themeByFamily). A frontend
+ * that reads currentTheme directly puts on another family's clothes — zhiyu
+ * rendering sky instead of its sunset paper was exactly that bug. Order:
+ * family's own pick → currentTheme → "" (the caller supplies its builtin
+ * default, since only the caller knows its family).
+ */
+export function themeForFamily(session: Session, familyId: string): string {
+  try {
+    const prefs = session.preferences ? JSON.parse(session.preferences) : null;
+    const own = prefs?.themeByFamily?.[familyId];
+    if (typeof own === 'string' && own) return own;
+  } catch {
+    /* malformed blob — fall through to the flat theme */
+  }
+  return session.currentTheme || '';
+}

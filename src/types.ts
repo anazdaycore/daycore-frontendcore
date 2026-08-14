@@ -84,8 +84,17 @@ export interface Proposal {
 export interface Session {
   id: string;
   assistantName: string;
+  /** The FALLBACK family's theme only. Other families live in the preferences
+   *  blob (api/spec/paths/session.yaml); read this through themeForFamily(),
+   *  never directly — a build that shows currentTheme on its own surface will
+   *  wear another family's colours. */
   currentTheme: string;
   language?: string;
+  /** Opaque JSON blob: themeByFamily, timezone, … Parse defensively — the
+   *  backend may omit it, and a malformed blob must not break boot. */
+  preferences?: string;
+  /** The user's persona prompt; returned so the settings page can prefill it. */
+  personaPrompt?: string;
   sessionToken?: string;
 }
 
@@ -206,6 +215,18 @@ export interface MoodCheckin {
   exerciseCompleted: boolean;
   note?: string;
   createdAt: string;
+}
+
+/** GET /api/rhythm — the session's rhythm. */
+export interface Rhythm {
+  /** Local wall-clock "HH:MM". */
+  wake: string;
+  /** Local wall-clock "HH:MM"; may be past midnight for a night owl. */
+  sleep: string;
+  /** default (cold start) | learned (median of observed days) | pinned (user-set). */
+  source: 'default' | 'learned' | 'pinned';
+  /** Rhythm days of evidence behind a learned profile. */
+  days: number;
 }
 
 export interface MemoryFact {
