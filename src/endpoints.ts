@@ -53,12 +53,41 @@ export const handshake = (m: unknown) => post<Handshake>('/api/version', m);
 export const planForDate = (date: string) =>
   get<DayPlan | null>(`/api/plan?date=${encodeURIComponent(date)}`);
 
-/** Today in the browser's own zone, as YYYY-MM-DD. */
+/** Today in the browser's own zone, as YYYY-MM-DD.
+ *  ⚠️ Prefer todayIsoInTZ with the session's zone: a browser in one zone and a
+ *  session seeded in another will otherwise agree on different "todays". */
 export function todayIso(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+/** Today in an IANA zone (e.g. "Asia/Shanghai"), as YYYY-MM-DD.
+ *  The session's zone is /api/session/preferences.timezone; the frontends must
+ *  draw "today" (and the petrify line) in THAT zone, not the browser's own, or a
+ *  demo seeded in another zone renders the wrong day. Falls back to the browser
+ *  zone when no zone is given. */
+export function todayIsoInTZ(tz?: string): string {
+  if (!tz) return todayIso();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((x) => x.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Current wall-clock minutes (0-1439) in an IANA zone — the now-line and the
+ *  petrify threshold need "now" in the SESSION's zone for the same reason
+ *  todayIsoInTZ does. Falls back to the browser zone when no zone is given. */
+export function nowMinutesInTZ(tz?: string): number {
+  if (!tz) { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? '0');
+  return get('hour') * 60 + get('minute');
+}
+
 
 /**
  * One incremental block edit.
@@ -492,3 +521,16 @@ export const unbindChannel = (channel: string) =>
 
 /** ⚠️ `user` is null for an anonymous session — a normal state, not an error. */
 export const me = () => get<{ user: User | null }>('/api/me');
+
+// ── auth (email + password) ────────────────────────────────────────────────
+//
+// ⚠️ These rely on the dc_auth cookie the backend sets on success (same-origin,
+// via the /api proxy), so the frontend never touches the JWT itself. After
+// login/register the anonymous session is MERGED into the user's session
+// (see internal/server/handlers_auth.go issueAndLink).
+
+export const login = (email: string, password: string) =>
+  post<{ ok: boolean; user: User }>('/api/auth/login', { email, password });
+export const register = (email: string, password: string, name?: string) =>
+  post<{ ok: boolean; user: User }>('/api/auth/register', { email, password, ...(name ? { name } : {}) });
+export const logout = () => post<{ ok: boolean }>('/api/auth/logout');

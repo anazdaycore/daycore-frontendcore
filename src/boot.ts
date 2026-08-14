@@ -159,3 +159,17 @@ export function themeForFamily(session: Session, familyId: string): string {
   }
   return session.currentTheme || '';
 }
+
+/** The session's IANA zone (preferences.timezone), or "" when unset/malformed.
+ *  "Today" belongs to THIS zone, not the browser's: a demo seeded for
+ *  Asia/Shanghai must render the same day on a machine in Chicago. Pair with
+ *  todayIsoInTZ / nowMinutesInTZ. */
+export function sessionTimezone(session: Session): string {
+  try {
+    const prefs = session.preferences ? JSON.parse(session.preferences) : null;
+    const tz = prefs?.timezone;
+    return typeof tz === 'string' ? tz : '';
+  } catch {
+    return '';
+  }
+}
