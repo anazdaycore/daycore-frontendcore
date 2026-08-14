@@ -484,6 +484,40 @@ export const rhythm = () => get<Rhythm>('/api/rhythm');
 export const pinRhythm = (wake: string, sleep: string) =>
   post<Rhythm>('/api/rhythm/pin', { wake, sleep });
 
+// ── brief / river / weekly-letter ────────────────────────────────────────────
+
+/** GET /api/brief — the morning card, derived from today's plan at read time
+ *  (never an AI call). An empty day answers { empty:true }. */
+export interface Brief {
+  date?: string;
+  empty: boolean;
+  title: string;
+  lines: string[];
+}
+export const brief = () => get<Brief>('/api/brief');
+
+/** GET /api/river?days=N — one column per day (empty days included):
+ *  op count + the day's mood emoji ('' when none). */
+export interface RiverDay {
+  date: string;
+  count: number;
+  mood: string;
+}
+export const river = (days = 15) => get<RiverDay[]>(`/api/river?days=${days}`);
+
+/** GET /api/weekly-letter — the Sunday-evening prose letter (Worker writes it,
+ *  frontends only read). null when none has been written yet. */
+export interface WeeklyLetter {
+  id: string;
+  sessionId: string;
+  weekStart: string;
+  weekEnd: string;
+  body: string;
+  locale: string;
+  createdAt: string;
+}
+export const weeklyLetter = () => get<{ letter: WeeklyLetter | null }>('/api/weekly-letter');
+
 // ── settings ────────────────────────────────────────────────────────────────
 
 export const preferences = () => get<SessionPrefs>('/api/session/preferences');
