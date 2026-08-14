@@ -67,13 +67,22 @@ export function todayIso(): string {
  *  draw "today" (and the petrify line) in THAT zone, not the browser's own, or a
  *  demo seeded in another zone renders the wrong day. Falls back to the browser
  *  zone when no zone is given. */
-export function todayIsoInTZ(tz?: string): string {
-  if (!tz) return todayIso();
+/** The calendar day of an absolute instant in an IANA zone, as YYYY-MM-DD. */
+export function dayIsoInTZ(d: Date, tz?: string): string {
+  if (!tz) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(d);
   const get = (t: string) => parts.find((x) => x.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+export function todayIsoInTZ(tz?: string): string {
+  if (!tz) return todayIso();
+  return dayIsoInTZ(new Date(), tz);
 }
 
 /** Current wall-clock minutes (0-1439) in an IANA zone — the now-line and the
@@ -130,6 +139,15 @@ export const refishBlock = (
   date: string,
   block: { id?: string; title: string; type: string; time?: string | null; duration_min?: number | null; rescheduled_from: string },
 ) => patchPlan(date, { action: 'add', block });
+
+/**
+ * 重新安排 as a PROPOSAL, not an immediate edit. "提案永远是虚影" — rescheduling
+ * a petrified block is a suggestion the user nods to. Returns a pending timed
+ * proposal (ghost at tomorrow's same slot); accepting it runs the refish chain.
+ * Prefer this over refishBlock for a user-triggered "重新安排" on a stone block.
+ */
+export const proposeReschedule = (blockId: string) =>
+  post<Proposal>('/api/plan/reschedule', { blockId });
 
 export const proposals = () => get<{ proposals: Proposal[] }>('/api/proposals');
 
@@ -460,6 +478,11 @@ export const markExerciseDone = (id: string) => patch<{ ok: boolean }>('/api/moo
 /** GET /api/rhythm — the session's rhythm. source: default (cold start) |
  *  learned (median of observed days) | pinned (user-set by hand). */
 export const rhythm = () => get<Rhythm>('/api/rhythm');
+
+/** Pin the rhythm by hand ("我就是夜猫子"). A pinned profile is never
+ *  overwritten by the nightly learn job. */
+export const pinRhythm = (wake: string, sleep: string) =>
+  post<Rhythm>('/api/rhythm/pin', { wake, sleep });
 
 // ── settings ────────────────────────────────────────────────────────────────
 
