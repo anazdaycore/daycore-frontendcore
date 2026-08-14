@@ -343,7 +343,7 @@ export interface Wish {
   title: string;
   note?: string;
   effortMin?: number;
-  status: 'active' | 'done' | 'archived';
+  status: 'active' | 'done' | 'dropped';
   createdAt?: string;
   updatedAt?: string;
 }

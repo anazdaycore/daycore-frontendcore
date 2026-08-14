@@ -83,12 +83,12 @@ describe('wishes endpoints', () => {
     await wishes();
     await wishes('done');
     await createWish({ title: 't', note: 'n', effortMin: 30 });
-    await updateWish('w1', { status: 'archived' });
+    await updateWish('w1', { status: 'dropped' });
     await deleteWish('w1');
     expect(calls[0]!.url.endsWith('/api/v2/wishes')).toBe(true);
     expect(calls[1]!.url.endsWith('/api/v2/wishes?status=done')).toBe(true);
     expect(calls[2]!).toMatchObject({ method: 'POST', body: { title: 't', note: 'n', effortMin: 30 } });
-    expect(calls[3]!).toMatchObject({ method: 'PATCH', body: { status: 'archived' } });
+    expect(calls[3]!).toMatchObject({ method: 'PATCH', body: { status: 'dropped' } });
     expect(calls[4]!.method).toBe('DELETE');
   });
 });

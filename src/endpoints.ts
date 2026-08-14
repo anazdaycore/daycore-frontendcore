@@ -311,13 +311,13 @@ export const importCanvas = (p: {
 
 // ── wishes (许愿池) ─────────────────────────────────────────────────────────
 
-export const wishes = (status?: 'active' | 'done' | 'archived') =>
+export const wishes = (status?: 'active' | 'done' | 'dropped') =>
   get<{ wishes: Wish[] }>('/api/wishes' + (status ? `?status=${status}` : ''));
 export const createWish = (w: { title: string; note?: string; effortMin?: number }) =>
   post<Wish>('/api/wishes', w);
 export const updateWish = (
   id: string,
-  changes: { title?: string; note?: string; effortMin?: number; status?: 'active' | 'done' | 'archived' },
+  changes: { title?: string; note?: string; effortMin?: number; status?: 'active' | 'done' | 'dropped' },
 ) => patch<unknown>(`/api/wishes/${encodeURIComponent(id)}`, changes);
 export const deleteWish = (id: string) => del<unknown>(`/api/wishes/${encodeURIComponent(id)}`);
 
