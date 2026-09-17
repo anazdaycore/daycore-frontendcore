@@ -42,7 +42,7 @@
  *
  * ⚠️ 用 `make core-min-api` 重算，不要手填。
  */
-export const SPEAKS = { major: 2, minor: 2 } as const;
+export const SPEAKS = { major: 2, minor: 4 } as const;
 
 const API_PREFIX = `/api/v${SPEAKS.major}`;
 
